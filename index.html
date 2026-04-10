@@ -12,7 +12,6 @@
     body { margin: 0; }
     #map { height: 100vh; }
 
-    /* Legend */
     .legend {
       position: absolute;
       bottom: 20px;
@@ -23,6 +22,7 @@
       box-shadow: 0 0 8px rgba(0,0,0,0.2);
       font-family: Arial;
       font-size: 14px;
+      z-index: 1000;
     }
   </style>
 </head>
@@ -40,31 +40,33 @@
 <script>
 const map = L.map('map').setView([28.6, 77.2], 10);
 
-// Base map
+// Base layer
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 18
 }).addTo(map);
 
+// Layer for markers
 let markersLayer = L.layerGroup().addTo(map);
 
-// 🔴 Custom RED pin (your image)
+// 🔴 Red pin (Google style)
 const redIcon = new L.Icon({
-  iconUrl: 'download.jpg',   // make sure file exists in repo
+  iconUrl: 'https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png',
   iconSize: [40, 40],
   iconAnchor: [20, 40],
   popupAnchor: [0, -40]
 });
 
-// 🟢 Green pin (default for now)
+// 🟢 Green pin
 const greenIcon = new L.Icon({
   iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
   iconSize: [32, 32],
-  iconAnchor: [16, 32]
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
 });
 
-// Load data
+// Load data from API
 function loadData() {
-  fetch("YOUR_API_URL_HERE")
+  fetch("https://script.google.com/macros/s/AKfycbzzZVpEuzA4LbX1DPf6dnQ5wbG3VMBIeCl5mT6CT7C4P8tTgDE5RGtPYi5qcFUWdSb3kA/exec")
     .then(res => res.json())
     .then(data => {
 
@@ -89,7 +91,7 @@ function loadData() {
     .catch(err => console.log("Error loading data:", err));
 }
 
-// 🔄 Auto refresh every 5 sec
+// Auto refresh every 5 seconds
 setInterval(loadData, 5000);
 loadData();
 
