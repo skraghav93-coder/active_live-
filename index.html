@@ -2,45 +2,97 @@
 <html>
 <head>
   <title>Live Status Map</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body { margin: 0; }
+    #map { height: 100vh; }
+
+    /* Legend */
+    .legend {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.2);
+      font-family: Arial;
+      font-size: 14px;
+    }
+  </style>
 </head>
 
 <body>
-<div id="map" style="height: 100vh;"></div>
+
+<div id="map"></div>
+
+<div class="legend">
+  <b>Status</b><br>
+  🔴 Pending<br>
+  🟢 Started
+</div>
 
 <script>
-const map = L.map('map').setView([28.6, 77.2], 6);
+const map = L.map('map').setView([28.6, 77.2], 10);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// Base map
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18
+}).addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 
+// 🔴 Custom RED pin (your image)
+const redIcon = new L.Icon({
+  iconUrl: 'download.jpg',   // make sure file exists in repo
+  iconSize: [40, 40],
+  iconAnchor: [20, 40],
+  popupAnchor: [0, -40]
+});
+
+// 🟢 Green pin (default for now)
+const greenIcon = new L.Icon({
+  iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32]
+});
+
+// Load data
 function loadData() {
-  fetch("https://script.google.com/macros/s/AKfycbzzZVpEuzA4LbX1DPf6dnQ5wbG3VMBIeCl5mT6CT7C4P8tTgDE5RGtPYi5qcFUWdSb3kA/exec")
+  fetch("YOUR_API_URL_HERE")
     .then(res => res.json())
     .then(data => {
-      
+
       markersLayer.clearLayers();
 
       data.forEach(point => {
-        let color = point.status === "Pending" ? "red" : "green";
 
-        let marker = L.circleMarker([point.lat, point.lng], {
-          radius: 8,
-          color: color,
-          fillOpacity: 0.8
-        });
+        let icon = point.status === "Pending" ? redIcon : greenIcon;
 
-        marker.bindPopup(point.status);
+        let marker = L.marker([point.lat, point.lng], { icon: icon });
+
+        marker.bindPopup(`
+          <b>Status:</b> ${point.status}<br>
+          <b>Lat:</b> ${point.lat}<br>
+          <b>Lng:</b> ${point.lng}
+        `);
+
         markersLayer.addLayer(marker);
       });
-    });
+
+    })
+    .catch(err => console.log("Error loading data:", err));
 }
 
-// refresh every 5 seconds
+// 🔄 Auto refresh every 5 sec
 setInterval(loadData, 5000);
 loadData();
+
 </script>
 
 </body>
