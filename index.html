@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Status Map</title>
+  <title>Live Service Map</title>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -9,64 +9,115 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; }
-    #map { height: 100vh; }
+    body { margin: 0; font-family: Arial; }
+    #map { height: 90vh; }
 
-    .legend {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      background: white;
+    .controls {
       padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.2);
-      font-family: Arial;
-      font-size: 14px;
-      z-index: 1000;
+      background: #f5f5f5;
+    }
+
+    select {
+      padding: 6px;
+      margin-right: 10px;
     }
   </style>
 </head>
 
 <body>
 
-<div id="map"></div>
+<div class="controls">
+  <b>Select Status:</b>
 
-<div class="legend">
-  <b>Status</b><br>
-  🔴 Pending<br>
-  🟢 Started
+  <select id="primary" onchange="handlePrimaryChange()">
+    <option value="Manpower">Manpower Reached</option>
+    <option value="Enrollment">Enrollment Start</option>
+  </select>
+
+  <select id="secondary"></select>
 </div>
 
+<div id="map"></div>
+
 <script>
+const API_BASE = "https://script.google.com/macros/s/AKfycbzzZVpEuzA4LbX1DPf6dnQ5wbG3VMBIeCl5mT6CT7C4P8tTgDE5RGtPYi5qcFUWdSb3kA/exec";
+
 const map = L.map('map').setView([28.6, 77.2], 10);
 
-// Base layer
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 18
-}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// Layer for markers
 let markersLayer = L.layerGroup().addTo(map);
 
-// 🔴 Red pin (Google style)
-const redIcon = new L.Icon({
-  iconUrl: 'https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png',
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32]
-});
+// Dropdown logic
+function handlePrimaryChange() {
+  const primary = document.getElementById("primary").value;
+  const secondary = document.getElementById("secondary");
 
-// 🟢 Green pin
-const greenIcon = new L.Icon({
-  iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32]
-});
+  secondary.innerHTML = "";
 
-// Load data from API
+  if (primary === "Manpower") {
+    ["Bio_M", "CSO_M", "Frisking_M"].forEach(opt => {
+      let o = document.createElement("option");
+      o.value = opt;
+      o.text = opt;
+      secondary.appendChild(o);
+    });
+  } else {
+    let o = document.createElement("option");
+    o.value = "Bio_EN";
+    o.text = "Bio_EN";
+    secondary.appendChild(o);
+  }
+
+  loadData();
+}
+
+document.getElementById("secondary").onchange = loadData;
+
+// 🎯 STATUS → COLOR LOGIC
+function getIcon(point, sheetName) {
+
+  let isGreen = false;
+
+  if (sheetName === "Bio_EN") {
+    // Enrollment logic
+    isGreen = point.status === "Started";
+  } else {
+    // Manpower logic
+    isGreen = point.status === "Complete";
+  }
+
+  return L.divIcon({
+    className: "custom-marker",
+    html: `
+      <div style="text-align:center;">
+        <div style="
+          background:white;
+          padding:2px 6px;
+          border-radius:4px;
+          font-size:12px;
+          font-weight:bold;
+          box-shadow:0 0 3px rgba(0,0,0,0.3);
+        ">
+          ${point.center_code}
+        </div>
+        <img src="${
+          isGreen
+            ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
+            : "https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png"
+        }" style="width:30px;">
+      </div>
+    `,
+    iconAnchor: [20, 50]
+  });
+}
+
+// Load data
 function loadData() {
-  fetch("https://script.google.com/macros/s/AKfycbzzZVpEuzA4LbX1DPf6dnQ5wbG3VMBIeCl5mT6CT7C4P8tTgDE5RGtPYi5qcFUWdSb3kA/exec")
+
+  const sheet = document.getElementById("secondary").value;
+
+  fetch(API_BASE + "?sheet=" + sheet)
     .then(res => res.json())
     .then(data => {
 
@@ -74,26 +125,26 @@ function loadData() {
 
       data.forEach(point => {
 
-        let icon = point.status === "Pending" ? redIcon : greenIcon;
+        let icon = getIcon(point, sheet);
 
         let marker = L.marker([point.lat, point.lng], { icon: icon });
 
         marker.bindPopup(`
-          <b>Status:</b> ${point.status}<br>
-          <b>Lat:</b> ${point.lat}<br>
-          <b>Lng:</b> ${point.lng}
+          <b>Center:</b> ${point.center_code}<br>
+          <b>Status:</b> ${point.status}
         `);
 
         markersLayer.addLayer(marker);
       });
 
-    })
-    .catch(err => console.log("Error loading data:", err));
+    });
 }
 
-// Auto refresh every 5 seconds
+// Initial load
+handlePrimaryChange();
+
+// Auto refresh
 setInterval(loadData, 5000);
-loadData();
 
 </script>
 
