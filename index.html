@@ -42,7 +42,7 @@
 <script>
 const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
 
-const map = L.map('map').setView([28.6, 77.2], 10);
+const map = L.map('map').setView([25.3176, 82.9739], 12);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -74,21 +74,18 @@ function handlePrimaryChange() {
 
 document.getElementById("secondary").onchange = loadData;
 
-// 🎯 STATUS → COLOR LOGIC
+// 🎯 STATUS LOGIC
 function getIcon(point, sheetName) {
 
   let isGreen = false;
 
   if (sheetName === "Bio_EN") {
-    // Enrollment logic
     isGreen = point.status === "Started";
   } else {
-    // Manpower logic
-    isGreen = point.status === "Completed";
+    isGreen = point.status === "Complete";
   }
 
   return L.divIcon({
-    className: "custom-marker",
     html: `
       <div style="text-align:center;">
         <div style="
@@ -112,35 +109,42 @@ function getIcon(point, sheetName) {
   });
 }
 
-// Load data
+// ✅ JSONP Loader (fixes CORS)
 function loadData() {
 
   const sheet = document.getElementById("secondary").value;
 
-  fetch(API_BASE + "?sheet=" + sheet)
-    .then(res => res.json())
-    .then(data => {
+  // remove old script
+  const oldScript = document.getElementById("jsonpScript");
+  if (oldScript) oldScript.remove();
 
-      markersLayer.clearLayers();
+  const script = document.createElement("script");
+  script.id = "jsonpScript";
 
-      data.forEach(point => {
+  script.src = API_BASE + "?sheet=" + sheet + "&callback=handleData";
 
-        let icon = getIcon(point, sheet);
-
-        let marker = L.marker([point.lat, point.lng], { icon: icon });
-
-        marker.bindPopup(`
-          <b>Center:</b> ${point.center_code}<br>
-          <b>Status:</b> ${point.status}
-        `);
-
-        markersLayer.addLayer(marker);
-      });
-
-    });
+  document.body.appendChild(script);
 }
 
-// Initial load
+// ✅ Data handler
+function handleData(data) {
+
+  markersLayer.clearLayers();
+
+  data.forEach(point => {
+
+    let icon = getIcon(point, document.getElementById("secondary").value);
+
+    let marker = L.marker(
+      [parseFloat(point.lat), parseFloat(point.lng)],
+      { icon: icon }
+    );
+
+    markersLayer.addLayer(marker);
+  });
+}
+
+// Init
 handlePrimaryChange();
 
 // Auto refresh
