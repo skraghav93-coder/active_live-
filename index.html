@@ -35,7 +35,7 @@
 
 <body>
 
-<!-- 🔥 Dashboard -->
+<!-- Dashboard -->
 <div id="dashboard">
   <div id="count1">--</div>
   <div id="count2">--</div>
@@ -65,7 +65,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 
-// Dropdown logic
+// Dropdown
 function handlePrimaryChange() {
   const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
@@ -91,7 +91,7 @@ function handlePrimaryChange() {
 
 document.getElementById("secondary").onchange = loadData;
 
-// Status → icon logic
+// ICON + LABEL (FIXED VISIBILITY)
 function getIcon(point, sheetName) {
 
   let isGreen = false;
@@ -105,13 +105,20 @@ function getIcon(point, sheetName) {
   return L.divIcon({
     html: `
       <div style="text-align:center;">
+        
         <div style="
-          font-size:11px;
-          color:#333;
-          margin-bottom:2px;
+          font-size:12px;
+          color:#000;
+          background:rgba(255,255,255,0.9);
+          padding:2px 5px;
+          border-radius:4px;
+          margin-bottom:4px;
+          white-space:nowrap;
+          box-shadow:0 1px 3px rgba(0,0,0,0.3);
         ">
           ${point.center_code}
         </div>
+
         <img src="${
           isGreen
             ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
@@ -123,7 +130,7 @@ function getIcon(point, sheetName) {
   });
 }
 
-// JSONP loader (fix CORS)
+// JSONP Loader
 function loadData() {
 
   const sheet = document.getElementById("secondary").value;
@@ -139,7 +146,7 @@ function loadData() {
   document.body.appendChild(script);
 }
 
-// Handle data + dashboard
+// Handle Data + Dashboard
 function handleData(data) {
 
   markersLayer.clearLayers();
@@ -170,7 +177,7 @@ function handleData(data) {
     markersLayer.addLayer(marker);
   });
 
-  // Update dashboard
+  // Dashboard update
   if (sheet === "Bio_EN") {
     document.getElementById("count1").innerHTML =
       "▶ Started: <b>" + started + "</b>";
