@@ -65,7 +65,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 
-// Dropdown
+// Dropdown logic
 function handlePrimaryChange() {
   const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
@@ -91,7 +91,7 @@ function handlePrimaryChange() {
 
 document.getElementById("secondary").onchange = loadData;
 
-// ICON + LABEL (FIXED VISIBILITY)
+// Clean icon (no label clutter)
 function getIcon(point, sheetName) {
 
   let isGreen = false;
@@ -102,35 +102,16 @@ function getIcon(point, sheetName) {
     isGreen = point.status === "Complete";
   }
 
-  return L.divIcon({
-    html: `
-      <div style="text-align:center;">
-        
-        <div style="
-          font-size:12px;
-          color:#000;
-          background:rgba(255,255,255,0.9);
-          padding:2px 5px;
-          border-radius:4px;
-          margin-bottom:4px;
-          white-space:nowrap;
-          box-shadow:0 1px 3px rgba(0,0,0,0.3);
-        ">
-          ${point.center_code}
-        </div>
-
-        <img src="${
-          isGreen
-            ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
-            : "https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png"
-        }" style="width:28px;">
-      </div>
-    `,
-    iconAnchor: [20, 50]
+  return L.icon({
+    iconUrl: isGreen
+      ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
+      : "https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png",
+    iconSize: [30, 30],
+    iconAnchor: [15, 30]
   });
 }
 
-// JSONP Loader
+// JSONP loader
 function loadData() {
 
   const sheet = document.getElementById("secondary").value;
@@ -146,7 +127,7 @@ function loadData() {
   document.body.appendChild(script);
 }
 
-// Handle Data + Dashboard
+// Handle data + dashboard
 function handleData(data) {
 
   markersLayer.clearLayers();
@@ -159,6 +140,7 @@ function handleData(data) {
 
   data.forEach(point => {
 
+    // Count logic
     if (sheet === "Bio_EN") {
       if (point.status === "Started") started++;
       else pending++;
@@ -173,6 +155,14 @@ function handleData(data) {
       [parseFloat(point.lat), parseFloat(point.lng)],
       { icon: icon }
     );
+
+    // ✅ Tooltip for clear center code
+    marker.bindTooltip(point.center_code, {
+      permanent: false,
+      direction: 'top',
+      offset: [0, -25],
+      opacity: 0.9
+    });
 
     markersLayer.addLayer(marker);
   });
