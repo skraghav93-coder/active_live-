@@ -7,7 +7,7 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; }
+    body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #eceff1; }
 
     #dashboard {
       padding: 15px 20px;
@@ -20,14 +20,14 @@
     }
 
     .stats-group { display: flex; gap: 20px; }
-    .stat-box { background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 4px; }
+    .stat-box { background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); }
 
     .controls { padding: 15px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; gap: 10px; }
 
     #container { display: flex; height: calc(100vh - 120px); }
 
     #leftPanel {
-      width: 350px;
+      width: 360px;
       background: #fdfdfd;
       overflow-y: auto;
       border-right: 1px solid #ccc;
@@ -35,17 +35,18 @@
       flex-direction: column;
     }
 
-    .panel-header { padding: 15px; background: #fff; border-bottom: 1px solid #eee; margin: 0; }
+    .panel-header { padding: 15px; background: #fff; border-bottom: 1px solid #eee; margin: 0; font-size: 1.2rem; }
 
-    /* New Table-like Layout for City Stats */
+    /* Column Layout matches: City | Total | Done | % */
     .city-list-header {
       display: flex;
-      background: #e0e0e0;
-      padding: 8px 15px;
-      font-size: 12px;
+      background: #f1f1f1;
+      padding: 10px 15px;
+      font-size: 11px;
       font-weight: bold;
-      color: #333;
+      color: #555;
       text-transform: uppercase;
+      border-bottom: 2px solid #ddd;
     }
 
     .cityCard {
@@ -60,13 +61,13 @@
     
     .cityCard:hover { background: #e3f2fd; }
 
-    .col-name { width: 40%; font-weight: bold; color: #1976d2; text-transform: capitalize; }
-    .col-total { width: 20%; text-align: center; }
-    .col-done { width: 20%; text-align: center; font-weight: bold; color: green; }
-    .col-perc { width: 20%; text-align: right; font-weight: bold; }
+    .col-name { width: 40%; font-weight: bold; color: #1976d2; }
+    .col-total { width: 20%; text-align: center; color: #333; }
+    .col-done { width: 20%; text-align: center; font-weight: bold; color: #2e7d32; }
+    .col-perc { width: 20%; text-align: right; font-weight: bold; color: #333; }
 
     #map { flex-grow: 1; height: 100%; }
-    select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+    select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; outline: none; }
   </style>
 </head>
 
@@ -87,7 +88,7 @@
     <option value="Enrollment">Enrollment Start</option>
   </select>
   <select id="secondary"></select>
-  <span id="loader" style="font-size: 12px; color: #666; display:none;">🔄 Refreshing...</span>
+  <span id="loader" style="font-size: 12px; color: #1976d2; display:none;">🔄 Refreshing...</span>
 </div>
 
 <div id="container">
@@ -107,11 +108,9 @@
 <script>
 const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
 
-let cityMarkerBounds = {}; 
-
 const map = L.map('map').setView([25.3176, 82.9739], 7);
 L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
@@ -120,7 +119,6 @@ function handlePrimaryChange() {
   const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
   secondary.innerHTML = "";
-
   const options = (primary === "Manpower") ? ["Bio_M", "CSO_M", "Frisking_M"] : ["Bio_EN"];
   options.forEach(opt => {
     let o = document.createElement("option");
@@ -137,20 +135,15 @@ function getIcon(isGreen) {
   return new L.Icon({
     iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
+    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
   });
 }
 
 function loadData() {
   document.getElementById("loader").style.display = "inline";
   const sheet = document.getElementById("secondary").value;
-  
   const oldScript = document.getElementById("jsonpScript");
   if (oldScript) oldScript.remove();
-
   const script = document.createElement("script");
   script.id = "jsonpScript";
   script.src = `${API_BASE}?sheet=${sheet}&callback=handleData`;
@@ -160,37 +153,37 @@ function loadData() {
 function handleData(data) {
   document.getElementById("loader").style.display = "none";
   markersLayer.clearLayers();
-  cityMarkerBounds = {};
 
   let stats = { pending: 0, complete: 0, started: 0 };
   const sheet = document.getElementById("secondary").value;
   let cityMap = {};
 
   data.forEach(point => {
-    // Bulletproof extraction to bypass hidden spaces in sheet headers
-    let extractedCity = "Unknown";
-    let extractedStatus = "";
-    
+    // 🔹 DYNAMIC HEADER MATCHING
+    let rawCity = "Unknown";
+    let rawStatus = "";
+    let rawLat, rawLng, rawCode;
+
     for (let key in point) {
-      let cleanKey = key.trim().toLowerCase();
-      if (cleanKey === "city") extractedCity = point[key];
-      if (cleanKey === "status") extractedStatus = String(point[key]);
+      const k = key.trim().toLowerCase();
+      if (k === "city") rawCity = point[key];
+      if (k === "status") rawStatus = String(point[key]);
+      if (k === "lat" || k === "latitude") rawLat = point[key];
+      if (k === "lng" || k === "longitude") rawLng = point[key];
+      if (k === "center_code") rawCode = point[key];
     }
 
-    const city = extractedCity.trim() || "Unknown";
-    const status = extractedStatus.trim().toLowerCase();
-    const lat = parseFloat(point.lat || point.Lat);
-    const lng = parseFloat(point.lng || point.Lng);
+    const city = String(rawCity).trim();
+    const status = rawStatus.trim().toLowerCase();
+    const lat = parseFloat(rawLat);
+    const lng = parseFloat(rawLng);
 
     if (!cityMap[city]) {
-      cityMap[city] = { total: 0, complete: 0, pending: 0, coords: [] };
+      cityMap[city] = { total: 0, complete: 0, coords: [] };
     }
     
     cityMap[city].total++;
-    
-    if (!isNaN(lat) && !isNaN(lng)) {
-        cityMap[city].coords.push([lat, lng]);
-    }
+    if (!isNaN(lat) && !isNaN(lng)) cityMap[city].coords.push([lat, lng]);
 
     let isSuccess = false;
     if (sheet === "Bio_EN") {
@@ -201,12 +194,11 @@ function handleData(data) {
       isSuccess ? stats.complete++ : stats.pending++;
     }
 
-    if (isSuccess) cityMap[city].complete++; else cityMap[city].pending++;
+    if (isSuccess) cityMap[city].complete++;
 
-    // Add marker
     if (!isNaN(lat) && !isNaN(lng)) {
       let marker = L.marker([lat, lng], { icon: getIcon(isSuccess) });
-      marker.bindTooltip(`<b>${point.center_code || "Center"}</b><br>${city}`);
+      marker.bindTooltip(`<b>${rawCode || "N/A"}</b><br>${city}`);
       markersLayer.addLayer(marker);
     }
   });
@@ -229,7 +221,6 @@ function renderCityStats(cityMap) {
   const div = document.getElementById("cityStats");
   div.innerHTML = "";
 
-  // Sort alphabetically
   Object.keys(cityMap).sort().forEach(city => {
     const d = cityMap[city];
     const percent = d.total > 0 ? Math.round((d.complete / d.total) * 100) : 0;
@@ -237,13 +228,9 @@ function renderCityStats(cityMap) {
     const card = document.createElement("div");
     card.className = "cityCard";
     card.onclick = () => {
-        if(d.coords.length > 0) {
-            const bounds = L.latLngBounds(d.coords);
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
-        }
+        if(d.coords.length > 0) map.fitBounds(L.latLngBounds(d.coords), { padding: [50, 50], maxZoom: 12 });
     };
 
-    // Format matches: Agra | 30 | 24 | 80%
     card.innerHTML = `
       <div class="col-name">${city}</div>
       <div class="col-total">${d.total}</div>
@@ -254,9 +241,9 @@ function renderCityStats(cityMap) {
   });
 }
 
-// Init
+// Initial Run
 handlePrimaryChange();
-setInterval(loadData, 10000);
+setInterval(loadData, 10000); // Refreshes every 10 seconds
 
 </script>
 </body>
