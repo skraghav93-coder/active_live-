@@ -2,263 +2,262 @@
 <html>
 <head>
   <title>Live Service Map Dashboard</title>
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; font-family: Arial; }
+    body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; }
 
     #dashboard {
-      padding: 10px;
-      background: #ffffff;
+      padding: 15px 20px;
+      background: #263238;
+      color: white;
       display: flex;
-      gap: 20px;
-      border-bottom: 1px solid #ddd;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
-    .controls {
-      padding: 10px;
-      background: #f5f5f5;
-    }
+    .stats-group { display: flex; gap: 20px; }
+    .stat-box { background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 4px; }
 
-    #container {
-      display: flex;
-      height: 85vh;
-    }
+    .controls { padding: 15px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; gap: 10px; }
+
+    #container { display: flex; height: calc(100vh - 120px); }
 
     #leftPanel {
-      width: 30%;
-      background: #f8f8f8;
+      width: 350px;
+      background: #fdfdfd;
       overflow-y: auto;
-      padding: 10px;
       border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
     }
 
-    #map {
-      width: 70%;
-      height: 100%;
+    .panel-header { padding: 15px; background: #fff; border-bottom: 1px solid #eee; margin: 0; }
+
+    /* New Table-like Layout for City Stats */
+    .city-list-header {
+      display: flex;
+      background: #e0e0e0;
+      padding: 8px 15px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #333;
+      text-transform: uppercase;
     }
 
     .cityCard {
+      display: flex;
+      padding: 12px 15px;
       background: white;
-      padding: 10px;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: background 0.2s;
+      align-items: center;
     }
+    
+    .cityCard:hover { background: #e3f2fd; }
 
-    select {
-      padding: 6px;
-      margin-right: 10px;
-    }
+    .col-name { width: 40%; font-weight: bold; color: #1976d2; text-transform: capitalize; }
+    .col-total { width: 20%; text-align: center; }
+    .col-done { width: 20%; text-align: center; font-weight: bold; color: green; }
+    .col-perc { width: 20%; text-align: right; font-weight: bold; }
+
+    #map { flex-grow: 1; height: 100%; }
+    select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
   </style>
 </head>
 
 <body>
 
 <div id="dashboard">
-  <div id="count1">--</div>
-  <div id="count2">--</div>
+  <div style="font-weight: bold; font-size: 1.2rem;">Service Monitor</div>
+  <div class="stats-group">
+    <div id="count1" class="stat-box">--</div>
+    <div id="count2" class="stat-box">--</div>
+  </div>
 </div>
 
 <div class="controls">
-  <b>Select Status:</b>
-
+  <b>Filter:</b>
   <select id="primary" onchange="handlePrimaryChange()">
     <option value="Manpower">Manpower Reached</option>
     <option value="Enrollment">Enrollment Start</option>
   </select>
-
   <select id="secondary"></select>
+  <span id="loader" style="font-size: 12px; color: #666; display:none;">🔄 Refreshing...</span>
 </div>
 
-<!-- ✅ NEW SPLIT -->
 <div id="container">
   <div id="leftPanel">
-    <h3>City Dashboard</h3>
-    <div id="cityStats"></div>
+    <h3 class="panel-header">City Dashboard</h3>
+    <div class="city-list-header">
+      <div class="col-name">City Name</div>
+      <div class="col-total">Total</div>
+      <div class="col-done">Done</div>
+      <div class="col-perc">%</div>
+    </div>
+    <div id="cityStats" style="overflow-y: auto; flex-grow: 1;"></div>
   </div>
-
   <div id="map"></div>
 </div>
 
 <script>
 const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
 
-const map = L.map('map').setView([25.3176, 82.9739], 7);
+let cityMarkerBounds = {}; 
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const map = L.map('map').setView([25.3176, 82.9739], 7);
+L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 
-// Dropdown
 function handlePrimaryChange() {
   const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
-
   secondary.innerHTML = "";
 
-  if (primary === "Manpower") {
-    ["Bio_M", "CSO_M", "Frisking_M"].forEach(opt => {
-      let o = document.createElement("option");
-      o.value = opt;
-      o.text = opt;
-      secondary.appendChild(o);
-    });
-  } else {
+  const options = (primary === "Manpower") ? ["Bio_M", "CSO_M", "Frisking_M"] : ["Bio_EN"];
+  options.forEach(opt => {
     let o = document.createElement("option");
-    o.value = "Bio_EN";
-    o.text = "Bio_EN";
+    o.value = o.text = opt;
     secondary.appendChild(o);
-  }
-
+  });
   loadData();
 }
 
 document.getElementById("secondary").onchange = loadData;
 
-// Icon logic
-function getIcon(point, sheetName) {
-
-  const status = String(point.status).trim().toLowerCase();
-  let isGreen = false;
-
-  if (sheetName === "Bio_EN") {
-    isGreen = status === "started";
-  } else {
-    isGreen = (status === "completed" || status === "partial");
-  }
-
-  return L.icon({
-    iconUrl: isGreen
-      ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
-      : "https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png",
-    iconSize: [30, 30],
-    iconAnchor: [15, 30]
+function getIcon(isGreen) {
+  const color = isGreen ? 'green' : 'red';
+  return new L.Icon({
+    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
   });
 }
 
-// JSONP loader
 function loadData() {
-
+  document.getElementById("loader").style.display = "inline";
   const sheet = document.getElementById("secondary").value;
-
+  
   const oldScript = document.getElementById("jsonpScript");
   if (oldScript) oldScript.remove();
 
   const script = document.createElement("script");
   script.id = "jsonpScript";
-
-  script.src = API_BASE + "?sheet=" + sheet + "&callback=handleData";
-
+  script.src = `${API_BASE}?sheet=${sheet}&callback=handleData`;
   document.body.appendChild(script);
 }
 
-// MAIN
 function handleData(data) {
-
+  document.getElementById("loader").style.display = "none";
   markersLayer.clearLayers();
+  cityMarkerBounds = {};
 
-  let pending = 0;
-  let complete = 0;
-  let started = 0;
-
+  let stats = { pending: 0, complete: 0, started: 0 };
   const sheet = document.getElementById("secondary").value;
-
-  let cityMap = {}; // ✅ NEW
+  let cityMap = {};
 
   data.forEach(point => {
+    // Bulletproof extraction to bypass hidden spaces in sheet headers
+    let extractedCity = "Unknown";
+    let extractedStatus = "";
+    
+    for (let key in point) {
+      let cleanKey = key.trim().toLowerCase();
+      if (cleanKey === "city") extractedCity = point[key];
+      if (cleanKey === "status") extractedStatus = String(point[key]);
+    }
 
-    const status = String(point.status).trim().toLowerCase();
-    const city = point.city || "Unknown";
+    const city = extractedCity.trim() || "Unknown";
+    const status = extractedStatus.trim().toLowerCase();
+    const lat = parseFloat(point.lat || point.Lat);
+    const lng = parseFloat(point.lng || point.Lng);
 
-    // 🔹 CITY LOGIC
     if (!cityMap[city]) {
-      cityMap[city] = { total: 0, complete: 0, pending: 0 };
+      cityMap[city] = { total: 0, complete: 0, pending: 0, coords: [] };
     }
-
+    
     cityMap[city].total++;
-
-    if (sheet === "Bio_EN") {
-      if (status === "started") {
-        started++;
-        cityMap[city].complete++;
-      } else {
-        pending++;
-        cityMap[city].pending++;
-      }
-    } else {
-      if (status === "completed" || status === "partial") {
-        complete++;
-        cityMap[city].complete++;
-      } else {
-        pending++;
-        cityMap[city].pending++;
-      }
+    
+    if (!isNaN(lat) && !isNaN(lng)) {
+        cityMap[city].coords.push([lat, lng]);
     }
 
-    // 🔹 MAP
-    let marker = L.marker(
-      [parseFloat(point.lat), parseFloat(point.lng)],
-      { icon: getIcon(point, sheet) }
-    );
+    let isSuccess = false;
+    if (sheet === "Bio_EN") {
+      isSuccess = (status === "started");
+      isSuccess ? stats.started++ : stats.pending++;
+    } else {
+      isSuccess = (status === "completed" || status === "partial");
+      isSuccess ? stats.complete++ : stats.pending++;
+    }
 
-    marker.bindTooltip(`${point.center_code} (${city})`);
+    if (isSuccess) cityMap[city].complete++; else cityMap[city].pending++;
 
-    markersLayer.addLayer(marker);
+    // Add marker
+    if (!isNaN(lat) && !isNaN(lng)) {
+      let marker = L.marker([lat, lng], { icon: getIcon(isSuccess) });
+      marker.bindTooltip(`<b>${point.center_code || "Center"}</b><br>${city}`);
+      markersLayer.addLayer(marker);
+    }
   });
 
-  renderCityStats(cityMap); // ✅ NEW
+  renderCityStats(cityMap);
+  updateDashboard(sheet, stats);
+}
 
-  // Dashboard
+function updateDashboard(sheet, stats) {
   if (sheet === "Bio_EN") {
-    document.getElementById("count1").innerHTML =
-      "▶ Started: <b>" + started + "</b>";
-
-    document.getElementById("count2").innerHTML =
-      "🔴 Pending: <b>" + pending + "</b>";
+    document.getElementById("count1").innerHTML = `▶ Started: <b>${stats.started}</b>`;
+    document.getElementById("count2").innerHTML = `🔴 Pending: <b>${stats.pending}</b>`;
   } else {
-    document.getElementById("count1").innerHTML =
-      "✅ Completed: <b>" + complete + "</b>";
-
-    document.getElementById("count2").innerHTML =
-      "🔴 Pending: <b>" + pending + "</b>";
+    document.getElementById("count1").innerHTML = `✅ Completed: <b>${stats.complete}</b>`;
+    document.getElementById("count2").innerHTML = `🔴 Pending: <b>${stats.pending}</b>`;
   }
 }
 
-// ✅ CITY PANEL RENDER
 function renderCityStats(cityMap) {
-
   const div = document.getElementById("cityStats");
   div.innerHTML = "";
 
-  Object.keys(cityMap).forEach(city => {
-
+  // Sort alphabetically
+  Object.keys(cityMap).sort().forEach(city => {
     const d = cityMap[city];
-    const percent = ((d.complete / d.total) * 100).toFixed(1);
+    const percent = d.total > 0 ? Math.round((d.complete / d.total) * 100) : 0;
+    
+    const card = document.createElement("div");
+    card.className = "cityCard";
+    card.onclick = () => {
+        if(d.coords.length > 0) {
+            const bounds = L.latLngBounds(d.coords);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+        }
+    };
 
-    div.innerHTML += `
-      <div class="cityCard">
-        <b>${city}</b><br>
-        Total: ${d.total}<br>
-        Completed: ${d.complete}<br>
-        Pending: ${d.pending}<br>
-        <b>Completion: ${percent}%</b>
-      </div>
+    // Format matches: Agra | 30 | 24 | 80%
+    card.innerHTML = `
+      <div class="col-name">${city}</div>
+      <div class="col-total">${d.total}</div>
+      <div class="col-done">${d.complete}</div>
+      <div class="col-perc">${percent}%</div>
     `;
+    div.appendChild(card);
   });
 }
 
 // Init
 handlePrimaryChange();
-
-// Auto refresh
-setInterval(loadData, 5000);
+setInterval(loadData, 10000);
 
 </script>
-
 </body>
 </html>
