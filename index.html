@@ -19,11 +19,35 @@
       border-bottom: 1px solid #ddd;
     }
 
-    #map { height: 85vh; }
-
     .controls {
       padding: 10px;
       background: #f5f5f5;
+    }
+
+    #container {
+      display: flex;
+      height: 85vh;
+    }
+
+    #leftPanel {
+      width: 30%;
+      background: #f8f8f8;
+      overflow-y: auto;
+      padding: 10px;
+      border-right: 1px solid #ccc;
+    }
+
+    #map {
+      width: 70%;
+      height: 100%;
+    }
+
+    .cityCard {
+      background: white;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
 
     select {
@@ -35,13 +59,11 @@
 
 <body>
 
-<!-- Dashboard -->
 <div id="dashboard">
   <div id="count1">--</div>
   <div id="count2">--</div>
 </div>
 
-<!-- Controls -->
 <div class="controls">
   <b>Select Status:</b>
 
@@ -53,19 +75,26 @@
   <select id="secondary"></select>
 </div>
 
-<!-- Map -->
-<div id="map"></div>
+<!-- ✅ NEW SPLIT -->
+<div id="container">
+  <div id="leftPanel">
+    <h3>City Dashboard</h3>
+    <div id="cityStats"></div>
+  </div>
+
+  <div id="map"></div>
+</div>
 
 <script>
 const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
 
-const map = L.map('map').setView([25.3176, 82.9739], 12);
+const map = L.map('map').setView([25.3176, 82.9739], 7);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 
-// Dropdown logic
+// Dropdown
 function handlePrimaryChange() {
   const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
@@ -91,15 +120,16 @@ function handlePrimaryChange() {
 
 document.getElementById("secondary").onchange = loadData;
 
-// Clean icon (no label clutter)
+// Icon logic
 function getIcon(point, sheetName) {
 
+  const status = String(point.status).trim().toLowerCase();
   let isGreen = false;
 
   if (sheetName === "Bio_EN") {
-    isGreen = point.status === "Started";
+    isGreen = status === "started";
   } else {
-    isGreen = point.status === "Complete";
+    isGreen = (status === "completed" || status === "partial");
   }
 
   return L.icon({
@@ -127,7 +157,7 @@ function loadData() {
   document.body.appendChild(script);
 }
 
-// Handle data + dashboard
+// MAIN
 function handleData(data) {
 
   markersLayer.clearLayers();
@@ -138,36 +168,52 @@ function handleData(data) {
 
   const sheet = document.getElementById("secondary").value;
 
+  let cityMap = {}; // ✅ NEW
+
   data.forEach(point => {
 
-    // Count logic
-    if (sheet === "Bio_EN") {
-      if (point.status === "Started") started++;
-      else pending++;
-    } else {
-      if (point.status === "Complete") complete++;
-      else pending++;
+    const status = String(point.status).trim().toLowerCase();
+    const city = point.city || "Unknown";
+
+    // 🔹 CITY LOGIC
+    if (!cityMap[city]) {
+      cityMap[city] = { total: 0, complete: 0, pending: 0 };
     }
 
-    let icon = getIcon(point, sheet);
+    cityMap[city].total++;
 
+    if (sheet === "Bio_EN") {
+      if (status === "started") {
+        started++;
+        cityMap[city].complete++;
+      } else {
+        pending++;
+        cityMap[city].pending++;
+      }
+    } else {
+      if (status === "completed" || status === "partial") {
+        complete++;
+        cityMap[city].complete++;
+      } else {
+        pending++;
+        cityMap[city].pending++;
+      }
+    }
+
+    // 🔹 MAP
     let marker = L.marker(
       [parseFloat(point.lat), parseFloat(point.lng)],
-      { icon: icon }
+      { icon: getIcon(point, sheet) }
     );
 
-    // ✅ Tooltip for clear center code
-    marker.bindTooltip(point.center_code, {
-      permanent: false,
-      direction: 'top',
-      offset: [0, -25],
-      opacity: 0.9
-    });
+    marker.bindTooltip(`${point.center_code} (${city})`);
 
     markersLayer.addLayer(marker);
   });
 
-  // Dashboard update
+  renderCityStats(cityMap); // ✅ NEW
+
+  // Dashboard
   if (sheet === "Bio_EN") {
     document.getElementById("count1").innerHTML =
       "▶ Started: <b>" + started + "</b>";
@@ -176,11 +222,34 @@ function handleData(data) {
       "🔴 Pending: <b>" + pending + "</b>";
   } else {
     document.getElementById("count1").innerHTML =
-      "✅ Complete: <b>" + complete + "</b>";
+      "✅ Completed: <b>" + complete + "</b>";
 
     document.getElementById("count2").innerHTML =
       "🔴 Pending: <b>" + pending + "</b>";
   }
+}
+
+// ✅ CITY PANEL RENDER
+function renderCityStats(cityMap) {
+
+  const div = document.getElementById("cityStats");
+  div.innerHTML = "";
+
+  Object.keys(cityMap).forEach(city => {
+
+    const d = cityMap[city];
+    const percent = ((d.complete / d.total) * 100).toFixed(1);
+
+    div.innerHTML += `
+      <div class="cityCard">
+        <b>${city}</b><br>
+        Total: ${d.total}<br>
+        Completed: ${d.complete}<br>
+        Pending: ${d.pending}<br>
+        <b>Completion: ${percent}%</b>
+      </div>
+    `;
+  });
 }
 
 // Init
