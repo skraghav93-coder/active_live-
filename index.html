@@ -8,29 +8,58 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; font-family: 'Segoe UI', Arial; background: #eceff1; }
+    :root {
+      --bg: #eceff1;
+      --card: #ffffff;
+      --text: #000;
+      --header: #263238;
+    }
+
+    body.dark {
+      --bg: #121212;
+      --card: #1e1e1e;
+      --text: #ffffff;
+      --header: #000;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI';
+      background: var(--bg);
+      color: var(--text);
+    }
 
     #dashboard {
       padding: 15px;
-      background: #263238;
+      background: var(--header);
       color: white;
       display: flex;
       justify-content: space-between;
+      align-items: center;
     }
 
     .controls {
       padding: 10px;
-      background: white;
+      background: var(--card);
       display: flex;
       gap: 10px;
       align-items: center;
     }
 
-    #container { display: flex; height: calc(100vh - 110px); }
+    select, button {
+      padding: 6px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    #container {
+      display: flex;
+      height: calc(100vh - 110px);
+    }
 
     #leftPanel {
       width: 350px;
-      background: #fff;
+      background: var(--card);
       overflow-y: auto;
       border-right: 1px solid #ccc;
     }
@@ -44,22 +73,21 @@
       cursor: pointer;
     }
 
-    .cityCard:hover { background: #e3f2fd; }
+    .cityCard:hover { background: rgba(33,150,243,0.2); }
 
     .col { width: 25%; text-align: center; }
-    .col-name { width: 40%; text-align: left; font-weight: bold; color: #1976d2; }
-
-    select { padding: 6px; }
+    .col-name { width: 40%; text-align: left; font-weight: bold; }
   </style>
 </head>
 
 <body>
 
 <div id="dashboard">
-  <div>Live Dashboard</div>
+  <div>📊 Live Dashboard</div>
   <div>
     <span id="count1"></span>
     <span id="count2" style="margin-left:20px;"></span>
+    <button onclick="toggleTheme()">🌙 Toggle</button>
   </div>
 </div>
 
@@ -71,9 +99,16 @@
 
   <select id="secondary"></select>
 
-  <!-- 🆕 CITY FILTER -->
+  <!-- City Filter -->
   <select id="cityFilter" onchange="applyCityFilter()">
     <option value="All">All Cities</option>
+  </select>
+
+  <!-- Sorting -->
+  <select id="sortBy" onchange="applyCityFilter()">
+    <option value="name">Sort: Name</option>
+    <option value="percent">Sort: % High → Low</option>
+    <option value="total">Sort: Total High → Low</option>
   </select>
 </div>
 
@@ -85,14 +120,20 @@
 </div>
 
 <script>
-const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
+const API_BASE = "YOUR_API_URL_HERE";
 
 const map = L.map('map').setView([25.3, 82.9], 7);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
-let fullData = []; // store original data
+let fullData = [];
 
+// Theme toggle
+function toggleTheme() {
+  document.body.classList.toggle("dark");
+}
+
+// Dropdown logic
 function handlePrimaryChange() {
   const secondary = document.getElementById("secondary");
   secondary.innerHTML = "";
@@ -112,6 +153,7 @@ function handlePrimaryChange() {
 
 secondary.onchange = loadData;
 
+// Icon
 function getIcon(isGreen) {
   return L.icon({
     iconUrl: isGreen
@@ -122,6 +164,7 @@ function getIcon(isGreen) {
   });
 }
 
+// Load API
 function loadData() {
   const sheet = secondary.value;
 
@@ -135,17 +178,16 @@ function loadData() {
   document.body.appendChild(s);
 }
 
+// Handle data
 function handleData(data) {
-
-  fullData = data; // store full dataset
-
+  fullData = data;
   populateCityFilter(data);
   applyCityFilter();
 }
 
+// City dropdown
 function populateCityFilter(data) {
   const select = document.getElementById("cityFilter");
-
   let cities = new Set();
 
   data.forEach(p => {
@@ -165,8 +207,8 @@ function populateCityFilter(data) {
   });
 }
 
+// Filter
 function applyCityFilter() {
-
   const selectedCity = cityFilter.value;
 
   let filtered = (selectedCity === "All")
@@ -182,6 +224,7 @@ function applyCityFilter() {
   renderAll(filtered);
 }
 
+// Render everything
 function renderAll(data) {
 
   markersLayer.clearLayers();
@@ -192,7 +235,7 @@ function renderAll(data) {
 
   data.forEach(p => {
 
-    let city = "Unknown", status="", lat, lng, code;
+    let city="Unknown", status="", lat, lng, code;
 
     for (let k in p) {
       let key = k.toLowerCase();
@@ -231,21 +274,39 @@ function renderAll(data) {
   updateDashboard(sheet, stats);
 }
 
+// Sorting + render
 function renderCityStats(cityMap) {
 
   const div = document.getElementById("cityStats");
   div.innerHTML = "";
 
-  Object.keys(cityMap).forEach(city => {
+  const sortBy = document.getElementById("sortBy").value;
+  let cities = Object.keys(cityMap);
+
+  cities.sort((a,b)=>{
+    const da = cityMap[a];
+    const db = cityMap[b];
+
+    const pa = da.total ? da.complete/da.total : 0;
+    const pb = db.total ? db.complete/db.total : 0;
+
+    if (sortBy === "percent") return pb - pa;
+    if (sortBy === "total") return db.total - da.total;
+
+    return a.localeCompare(b);
+  });
+
+  cities.forEach(city => {
 
     const d = cityMap[city];
-    const percent = Math.round((d.complete/d.total)*100);
+    const percent = d.total ? Math.round((d.complete/d.total)*100) : 0;
 
     let card = document.createElement("div");
     card.className = "cityCard";
 
     card.onclick = () => {
-      map.fitBounds(L.latLngBounds(d.coords), {padding:[50,50]});
+      if (d.coords.length > 0)
+        map.fitBounds(L.latLngBounds(d.coords), {padding:[50,50]});
     };
 
     card.innerHTML = `
@@ -259,6 +320,7 @@ function renderCityStats(cityMap) {
   });
 }
 
+// Dashboard
 function updateDashboard(sheet, stats) {
   if (sheet === "Bio_EN") {
     count1.innerHTML = `Started: ${stats.started}`;
@@ -269,7 +331,7 @@ function updateDashboard(sheet, stats) {
   }
 }
 
-// init
+// Init
 handlePrimaryChange();
 setInterval(loadData, 10000);
 
