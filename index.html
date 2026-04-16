@@ -44,12 +44,15 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     select, button {
-      padding: 6px;
-      border-radius: 5px;
+      padding: 8px 10px;
+      border-radius: 6px;
       border: 1px solid #ccc;
+      min-width: 140px;
+      font-weight: 500;
     }
 
     #container {
@@ -99,16 +102,14 @@
 
   <select id="secondary"></select>
 
-  <!-- City Filter -->
   <select id="cityFilter" onchange="applyCityFilter()">
     <option value="All">All Cities</option>
   </select>
 
-  <!-- Sorting -->
   <select id="sortBy" onchange="applyCityFilter()">
-    <option value="name">Sort: Name</option>
-    <option value="percent">Sort: % High → Low</option>
-    <option value="total">Sort: Total High → Low</option>
+    <option value="name">🔤 Name</option>
+    <option value="percent">📊 Completion %</option>
+    <option value="total">📦 Total Centers</option>
   </select>
 </div>
 
@@ -123,14 +124,33 @@
 const API_BASE = "YOUR_API_URL_HERE";
 
 const map = L.map('map').setView([25.3, 82.9], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// 🌞 Light map
+let lightLayer = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+);
+
+// 🌙 Dark map
+let darkLayer = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+);
+
+lightLayer.addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
 let fullData = [];
 
-// Theme toggle
+// 🌙 Toggle theme + map
 function toggleTheme() {
   document.body.classList.toggle("dark");
+
+  if (document.body.classList.contains("dark")) {
+    map.removeLayer(lightLayer);
+    map.addLayer(darkLayer);
+  } else {
+    map.removeLayer(darkLayer);
+    map.addLayer(lightLayer);
+  }
 }
 
 // Dropdown logic
@@ -153,7 +173,7 @@ function handlePrimaryChange() {
 
 secondary.onchange = loadData;
 
-// Icon
+// Marker icon
 function getIcon(isGreen) {
   return L.icon({
     iconUrl: isGreen
@@ -185,7 +205,7 @@ function handleData(data) {
   applyCityFilter();
 }
 
-// City dropdown
+// City filter dropdown
 function populateCityFilter(data) {
   const select = document.getElementById("cityFilter");
   let cities = new Set();
@@ -207,7 +227,7 @@ function populateCityFilter(data) {
   });
 }
 
-// Filter
+// Apply filter
 function applyCityFilter() {
   const selectedCity = cityFilter.value;
 
@@ -224,7 +244,7 @@ function applyCityFilter() {
   renderAll(filtered);
 }
 
-// Render everything
+// Render all
 function renderAll(data) {
 
   markersLayer.clearLayers();
