@@ -3,83 +3,104 @@
 <head>
   <title>Live Service Map Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; font-family: 'Segoe UI', Arial; background: #eceff1; }
+    body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #eceff1; }
 
     #dashboard {
-      padding: 15px;
+      padding: 15px 20px;
       background: #263238;
       color: white;
       display: flex;
       justify-content: space-between;
-    }
-
-    .controls {
-      padding: 10px;
-      background: white;
-      display: flex;
-      gap: 10px;
       align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
-    #container { display: flex; height: calc(100vh - 110px); }
+    .stats-group { display: flex; gap: 20px; }
+    .stat-box { background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); }
+
+    .controls { padding: 15px; background: #fff; border-bottom: 1px solid #ccc; display: flex; align-items: center; gap: 10px; }
+
+    #container { display: flex; height: calc(100vh - 120px); }
 
     #leftPanel {
-      width: 350px;
-      background: #fff;
+      width: 360px;
+      background: #fdfdfd;
       overflow-y: auto;
       border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
     }
 
-    #map { flex-grow: 1; }
+    .panel-header { padding: 15px; background: #fff; border-bottom: 1px solid #eee; margin: 0; font-size: 1.2rem; }
+
+    /* Column Layout matches: City | Total | Done | % */
+    .city-list-header {
+      display: flex;
+      background: #f1f1f1;
+      padding: 10px 15px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #555;
+      text-transform: uppercase;
+      border-bottom: 2px solid #ddd;
+    }
 
     .cityCard {
       display: flex;
-      padding: 10px;
+      padding: 12px 15px;
+      background: white;
       border-bottom: 1px solid #eee;
       cursor: pointer;
+      transition: background 0.2s;
+      align-items: center;
     }
-
+    
     .cityCard:hover { background: #e3f2fd; }
 
-    .col { width: 25%; text-align: center; }
-    .col-name { width: 40%; text-align: left; font-weight: bold; color: #1976d2; }
+    .col-name { width: 40%; font-weight: bold; color: #1976d2; }
+    .col-total { width: 20%; text-align: center; color: #333; }
+    .col-done { width: 20%; text-align: center; font-weight: bold; color: #2e7d32; }
+    .col-perc { width: 20%; text-align: right; font-weight: bold; color: #333; }
 
-    select { padding: 6px; }
+    #map { flex-grow: 1; height: 100%; }
+    select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; outline: none; }
   </style>
 </head>
 
 <body>
 
 <div id="dashboard">
-  <div>Live Dashboard</div>
-  <div>
-    <span id="count1"></span>
-    <span id="count2" style="margin-left:20px;"></span>
+  <div style="font-weight: bold; font-size: 1.2rem;">UPPRPB Home guard 25-27 Apr</div>
+  <div class="stats-group">
+    <div id="count1" class="stat-box">--</div>
+    <div id="count2" class="stat-box">--</div>
   </div>
 </div>
 
 <div class="controls">
+  <b>Filter:</b>
   <select id="primary" onchange="handlePrimaryChange()">
-    <option value="Manpower">Manpower</option>
-    <option value="Enrollment">Enrollment</option>
+    <option value="Manpower">Manpower Reached</option>
+    <option value="Enrollment">Enrollment Start</option>
   </select>
-
   <select id="secondary"></select>
-
-  <!-- 🆕 CITY FILTER -->
-  <select id="cityFilter" onchange="applyCityFilter()">
-    <option value="All">All Cities</option>
-  </select>
+  <span id="loader" style="font-size: 12px; color: #1976d2; display:none;">🔄 Refreshing...</span>
 </div>
 
 <div id="container">
   <div id="leftPanel">
-    <div id="cityStats"></div>
+    <h3 class="panel-header">City Dashboard</h3>
+    <div class="city-list-header">
+      <div class="col-name">City Name</div>
+      <div class="col-total">Total</div>
+      <div class="col-done">Done</div>
+      <div class="col-perc">%</div>
+    </div>
+    <div id="cityStats" style="overflow-y: auto; flex-grow: 1;"></div>
   </div>
   <div id="map"></div>
 </div>
@@ -87,143 +108,98 @@
 <script>
 const API_BASE = "https://script.google.com/macros/s/AKfycbwzRtXBgSV6eTPQsSM8la6ouGcq9EoTjsvTLmpDsA2dxpqvJXgkCcfKYOBQERjgK_I5xQ/exec";
 
-const map = L.map('map').setView([25.3, 82.9], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const map = L.map('map').setView([25.3176, 82.9739], 7);
+L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+}).addTo(map);
 
 let markersLayer = L.layerGroup().addTo(map);
-let fullData = []; // store original data
 
 function handlePrimaryChange() {
+  const primary = document.getElementById("primary").value;
   const secondary = document.getElementById("secondary");
   secondary.innerHTML = "";
-
-  const opts = (primary.value === "Manpower")
-    ? ["Bio_M","CSO_M","Frisking_M"]
-    : ["Bio_EN"];
-
-  opts.forEach(o => {
-    let opt = document.createElement("option");
-    opt.value = opt.text = o;
-    secondary.appendChild(opt);
+  const options = (primary === "Manpower") ? ["Bio_M", "CSO_M", "Frisking_M"] : ["Bio_EN"];
+  options.forEach(opt => {
+    let o = document.createElement("option");
+    o.value = o.text = opt;
+    secondary.appendChild(o);
   });
-
   loadData();
 }
 
-secondary.onchange = loadData;
+document.getElementById("secondary").onchange = loadData;
 
 function getIcon(isGreen) {
-  return L.icon({
-    iconUrl: isGreen
-      ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
-      : "https://maps.gstatic.com/mapfiles/api-3/images/spotlight-poi2_hdpi.png",
-    iconSize: [30,30],
-    iconAnchor: [15,30]
+  const color = isGreen ? 'green' : 'red';
+  return new L.Icon({
+    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
   });
 }
 
 function loadData() {
-  const sheet = secondary.value;
-
-  const old = document.getElementById("jsonp");
-  if (old) old.remove();
-
-  const s = document.createElement("script");
-  s.id = "jsonp";
-  s.src = `${API_BASE}?sheet=${sheet}&callback=handleData`;
-
-  document.body.appendChild(s);
+  document.getElementById("loader").style.display = "inline";
+  const sheet = document.getElementById("secondary").value;
+  const oldScript = document.getElementById("jsonpScript");
+  if (oldScript) oldScript.remove();
+  const script = document.createElement("script");
+  script.id = "jsonpScript";
+  script.src = `${API_BASE}?sheet=${sheet}&callback=handleData`;
+  document.body.appendChild(script);
 }
 
 function handleData(data) {
-
-  fullData = data; // store full dataset
-
-  populateCityFilter(data);
-  applyCityFilter();
-}
-
-function populateCityFilter(data) {
-  const select = document.getElementById("cityFilter");
-
-  let cities = new Set();
-
-  data.forEach(p => {
-    for (let k in p) {
-      if (k.toLowerCase().includes("city")) {
-        cities.add(p[k]);
-      }
-    }
-  });
-
-  select.innerHTML = '<option value="All">All Cities</option>';
-
-  [...cities].sort().forEach(c => {
-    let opt = document.createElement("option");
-    opt.value = opt.text = c;
-    select.appendChild(opt);
-  });
-}
-
-function applyCityFilter() {
-
-  const selectedCity = cityFilter.value;
-
-  let filtered = (selectedCity === "All")
-    ? fullData
-    : fullData.filter(p => {
-        for (let k in p) {
-          if (k.toLowerCase().includes("city")) {
-            return p[k] === selectedCity;
-          }
-        }
-      });
-
-  renderAll(filtered);
-}
-
-function renderAll(data) {
-
+  document.getElementById("loader").style.display = "none";
   markersLayer.clearLayers();
 
-  let stats = { pending:0, complete:0, started:0 };
+  let stats = { pending: 0, complete: 0, started: 0 };
+  const sheet = document.getElementById("secondary").value;
   let cityMap = {};
-  const sheet = secondary.value;
 
-  data.forEach(p => {
+  data.forEach(point => {
+    // 🔹 DYNAMIC HEADER MATCHING
+    let rawCity = "Unknown";
+    let rawStatus = "";
+    let rawLat, rawLng, rawCode;
 
-    let city = "Unknown", status="", lat, lng, code;
-
-    for (let k in p) {
-      let key = k.toLowerCase();
-      if (key.includes("city")) city = p[k];
-      if (key.includes("status")) status = String(p[k]).toLowerCase();
-      if (key.includes("lat")) lat = parseFloat(p[k]);
-      if (key.includes("lng")) lng = parseFloat(p[k]);
-      if (key.includes("center")) code = p[k];
+    for (let key in point) {
+      const k = key.trim().toLowerCase();
+      if (k === "city") rawCity = point[key];
+      if (k === "status") rawStatus = String(point[key]);
+      if (k === "lat" || k === "latitude") rawLat = point[key];
+      if (k === "lng" || k === "longitude") rawLng = point[key];
+      if (k === "center_code") rawCode = point[key];
     }
 
-    if (!cityMap[city]) cityMap[city] = { total:0, complete:0, coords:[] };
+    const city = String(rawCity).trim();
+    const status = rawStatus.trim().toLowerCase();
+    const lat = parseFloat(rawLat);
+    const lng = parseFloat(rawLng);
 
+    if (!cityMap[city]) {
+      cityMap[city] = { total: 0, complete: 0, coords: [] };
+    }
+    
     cityMap[city].total++;
+    if (!isNaN(lat) && !isNaN(lng)) cityMap[city].coords.push([lat, lng]);
 
-    let isGreen = false;
-
+    let isSuccess = false;
     if (sheet === "Bio_EN") {
-      isGreen = (status === "started");
-      isGreen ? stats.started++ : stats.pending++;
+      isSuccess = (status === "started");
+      isSuccess ? stats.started++ : stats.pending++;
     } else {
-      isGreen = (status === "completed" || status === "partial");
-      isGreen ? stats.complete++ : stats.pending++;
+      isSuccess = (status === "completed" || status === "partial");
+      isSuccess ? stats.complete++ : stats.pending++;
     }
 
-    if (isGreen) cityMap[city].complete++;
+    if (isSuccess) cityMap[city].complete++;
 
     if (!isNaN(lat) && !isNaN(lng)) {
-      let m = L.marker([lat,lng], { icon: getIcon(isGreen) });
-      m.bindTooltip(`${code} (${city})`);
-      markersLayer.addLayer(m);
-      cityMap[city].coords.push([lat,lng]);
+      let marker = L.marker([lat, lng], { icon: getIcon(isSuccess) });
+      marker.bindTooltip(`<b>${rawCode || "N/A"}</b><br>${city}`);
+      markersLayer.addLayer(marker);
     }
   });
 
@@ -231,49 +207,44 @@ function renderAll(data) {
   updateDashboard(sheet, stats);
 }
 
-function renderCityStats(cityMap) {
+function updateDashboard(sheet, stats) {
+  if (sheet === "Bio_EN") {
+    document.getElementById("count1").innerHTML = `▶ Started: <b>${stats.started}</b>`;
+    document.getElementById("count2").innerHTML = `🔴 Pending: <b>${stats.pending}</b>`;
+  } else {
+    document.getElementById("count1").innerHTML = `✅ Completed: <b>${stats.complete}</b>`;
+    document.getElementById("count2").innerHTML = `🔴 Pending: <b>${stats.pending}</b>`;
+  }
+}
 
+function renderCityStats(cityMap) {
   const div = document.getElementById("cityStats");
   div.innerHTML = "";
 
-  Object.keys(cityMap).forEach(city => {
-
+  Object.keys(cityMap).sort().forEach(city => {
     const d = cityMap[city];
-    const percent = Math.round((d.complete/d.total)*100);
-
-    let card = document.createElement("div");
+    const percent = d.total > 0 ? Math.round((d.complete / d.total) * 100) : 0;
+    
+    const card = document.createElement("div");
     card.className = "cityCard";
-
     card.onclick = () => {
-      map.fitBounds(L.latLngBounds(d.coords), {padding:[50,50]});
+        if(d.coords.length > 0) map.fitBounds(L.latLngBounds(d.coords), { padding: [50, 50], maxZoom: 12 });
     };
 
     card.innerHTML = `
       <div class="col-name">${city}</div>
-      <div class="col">${d.total}</div>
-      <div class="col">${d.complete}</div>
-      <div class="col">${percent}%</div>
+      <div class="col-total">${d.total}</div>
+      <div class="col-done">${d.complete}</div>
+      <div class="col-perc">${percent}%</div>
     `;
-
     div.appendChild(card);
   });
 }
 
-function updateDashboard(sheet, stats) {
-  if (sheet === "Bio_EN") {
-    count1.innerHTML = `Started: ${stats.started}`;
-    count2.innerHTML = `Pending: ${stats.pending}`;
-  } else {
-    count1.innerHTML = `Completed: ${stats.complete}`;
-    count2.innerHTML = `Pending: ${stats.pending}`;
-  }
-}
-
-// init
+// Initial Run
 handlePrimaryChange();
-setInterval(loadData, 10000);
+setInterval(loadData, 10000); // Refreshes every 10 seconds
 
 </script>
-
 </body>
 </html>
